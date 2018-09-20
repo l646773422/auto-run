@@ -1,6 +1,7 @@
 import threading
 import queue
 import time
+import multiprocessing
 
 
 class ThreadPool(object):
@@ -23,6 +24,16 @@ class ThreadPool(object):
     #     for job in jobs:
     #         self.work_queue.put(job)
 
+    def task_left(self):
+        return self.work_queue.qsize()
+
+    def working_threads(self):
+        count = 0
+        for _thread in self.pool:
+            if _thread.working:
+                count += 1
+        return count
+
     def start(self):
         for thread in self.pool:
             time.sleep(1.0)
@@ -40,14 +51,24 @@ class Worker(threading.Thread):
         threading.Thread.__init__(self)
         self.work_queue = work_queue
         self.thread_id = thread_id
+        self.working = False
+        self.all_task_done = False
 
     def run(self):
         while True:
             if not self.work_queue.empty():
+                self.working = True
                 self.do_job()
+            elif not self.all_task_done:
+                self.working = False
+                time.sleep(0.01)
             else:
                 break
 
     def do_job(self):
         func, *args = self.work_queue.get()
         func(*args)
+
+
+def cpu_count():
+    return multiprocessing.cpu_count()

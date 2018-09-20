@@ -1,44 +1,23 @@
 import socket
 import json
+from ThreadPool import *
 
-# TODO TCP
-
-task_info = json.dumps(
-    [
-        ['encoder', 'TAppEncoder'],
-        ['-c', '1'],
-        ['-c', 2],
-        ['-i', 3],
-        ['-o', 4],
-        ['-b', 5],
-        ['QP', 5],
-        ['FramesToBeEncoded', 6],
-        ['InputSampleBitDepth', 6],
-        ['SampleBitDepth', 7],
-    ]
-)
-
+# TCP
+# init thread pool & socket server
+thread_pool = ThreadPool(100, 4)
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
 s.connect(('127.0.0.1', 9999))
-
 print(s.recv(1024).decode('utf-8'))
 
-for data in [task_info, b'hly']:
-    s.send(data)
-    print(s.recv(1024).decode('utf-8'))
+data = {
+    'tasks': thread_pool.working_threads(),
+    'test': 0,
+}
+json_data = json.dumps(data).encode('utf-8')
+
+s.send(json_data)
+print(s.recv(1024).decode('utf-8'))
 
 s.send(b'exit')
 s.close()
-
-# # TODO UDP
-# s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-# for data in [b'llt', b'hly']:
-#     s.sendto(data, ('127.0.0.1', 9999))
-#     print(s.recv(1024).decode('utf-8'))
-#
-# s.close()
-
-# encoder = json.JSONEncoder()
-
 

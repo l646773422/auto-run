@@ -14,9 +14,9 @@ def path_join(*path):
     return os.path.join(*path)
 
 
-def parse_param(other_cfg):
+def parse_param(cfg):
     command = list()
-    for key, val in other_cfg:
+    for key, val in cfg:
         # val = other_cfg[key]
         if key.startswith('-'):
             param = key + ' ' + str(val)
