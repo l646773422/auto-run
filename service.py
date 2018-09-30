@@ -4,8 +4,16 @@ import time
 import json
 import queue
 from parallel import *
+from func_lib import *
 
 MAX_TASK_SIZE = 100
+
+
+class Service:
+
+    def __init__(self):
+        self.node_nums = 0
+        self.nodes_info = []
 
 
 # tcp server
@@ -26,6 +34,15 @@ def tcp_link(sock, addr, task_queue):
     print('connection from %s:%s closed' % addr)
 
 if __name__ == '__main__':
+
+    with open('tasks.json', 'r') as fp:
+        json_str = json.load(fp)
+        spec_dict = json_str['spec_config']
+        tasks_dict = json_str['tasks_config']
+        encoder_dict = json_str['encoder_config']
+        general_dict = json_str['general_config']
+
+        print(json_str)
 
     my_pool = ThreadPool(100, 3)
 

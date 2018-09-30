@@ -1,0 +1,32 @@
+{
+    "encoder_config":
+    {
+        "encoder_cfg": "avs3_encode_ra.cfg",
+        "exe": "TAppEncoder.exe"
+    },
+
+    "spec_config":
+    {
+        "sample_bit_depth": "10",
+        "RefineQP": 1,
+        "LambdaRatioI": 1.0
+    },
+
+    "tasks_config": [
+        {
+            "sequence_name": "BasketballPass_416x240_50",
+            "intra_period": "5",
+            "input_bit_depth": "8",
+            "frames": "300",
+            "QPs": "22 27 32 37"
+        },
+
+        {
+            "sequence_name": "BlowingBubbles_416x240_50",
+            "intra_period": "5",
+            "input_bit_depth": "8",
+            "frames": "300",
+            "QPs": "22 27 32 37"
+        }
+    ]
+}
