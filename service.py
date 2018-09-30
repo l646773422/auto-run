@@ -5,6 +5,7 @@ import json
 import queue
 from parallel import *
 from func_lib import *
+from collections import OrderedDict
 
 MAX_TASK_SIZE = 100
 
@@ -14,7 +15,53 @@ class Service:
     def __init__(self):
         self.node_nums = 0
         self.nodes_info = []
+        self.task_file_name = 'tasks.json'
+        self.general_file_name = 'config.json'
 
+        self.spec_dict = OrderedDict()
+        self.encoder_dict = OrderedDict()
+        self.tasks_list = OrderedDict()
+
+    def set_task_dict(self):
+        self.spec_dict, self.encoder_dict, self.tasks_list = self.parse_tasks()
+
+    def parse_tasks(self):
+        with open(self.task_file_name, 'r') as _fp:
+            _json_str = json.load(_fp, object_pairs_hook=OrderedDict)
+            _spec_dict = _json_str['spec_config']
+            _tasks_list = _json_str['tasks_config']
+            _encoder_dict = _json_str['encoder_config']
+        return _spec_dict, _encoder_dict, _tasks_list
+
+    # for computation node
+    def get_general_cfg(self):
+        with open(self.general_file_name, 'r') as _fp:
+            _json_str = json.load(_fp)
+            _general_dict = _json_str['general_config']
+        return _general_dict
+
+    def assemble_tasks(self):
+        _encoder_dict = self.encoder_dict
+        _spec_dict = self.spec_dict
+        _task_list = []
+        encoder_cfg = _encoder_dict['encoder_cfg']
+        encoder_exe = _encoder_dict['exe']
+
+        for task in self.tasks_list:
+            random_str = ''.join(random.sample(string.ascii_letters + string.digits, 4))
+
+            for QP in task['QPs'].split(' '):
+                # 先解析任务参数，然后加入专有参数 (spec_dict 里的内容)
+                seq_name = task['sequence_name']
+                seq_info = (seq_name, QP, random_str)
+                rec_yuv = mjoin('rec', *seq_info, '.yuv')
+                dec_yuv = mjoin('dec', *seq_info, '.yuv')
+                bin_stream = mjoin('str', *seq_info, '.yuv')
+                encoder_log = mjoin('[enc]', *seq_info, '.log')
+                decoder_log = mjoin('[dec]', *seq_info, '.log')
+                err_log = mjoin('[err]', *seq_info, '.log')
+
+                pass
 
 # tcp server
 def tcp_link(sock, addr, task_queue):
@@ -35,77 +82,11 @@ def tcp_link(sock, addr, task_queue):
 
 if __name__ == '__main__':
 
-    with open('tasks.json', 'r') as fp:
-        json_str = json.load(fp)
-        spec_dict = json_str['spec_config']
-        tasks_dict = json_str['tasks_config']
-        encoder_dict = json_str['encoder_config']
-        general_dict = json_str['general_config']
-
-        print(json_str)
-
+    my_sever = Service()
     my_pool = ThreadPool(100, 3)
 
-    # 感觉序列参数可以单独写成一个文件
-    all_seq_data = [
-        # seq-name, intra-period, FramesToBeEncode QPs
-        ['BasketballPass_416x240_50', '5', '8', '5', '22 27 32 37'],
-        ['BlowingBubbles_416x240_50', '5', '8', '5', '22 27 32 37'],
-    ]
-
-    seq_path = 'Sequences'  # YUV path
-    cfg_path = 'Sequences'  # YUV cfg path
-    work_path = '.'         #
-    sample_bit_depth = '10'
-    # 解析参数，拼接成指令
-    for seq_data in all_seq_data:
-        seq_name, intra_period, input_bit_depth, frames, QPs = seq_data
-        QPs = QPs.split(' ')
-        seq_cfg = path_join(cfg_path, seq_name + '.cfg')
-        seq_ori_yuv = path_join(seq_path, seq_name + '.yuv')
-        random_str = ''.join(random.sample(string.ascii_letters + string.digits, 4))
-        for QP in QPs:
-            # 加一个随机串防止重名
-            encoder_cfg = 'avs3_encode_ra.cfg'
-            rec_yuv = '_'.join(['rec', seq_name, QP, random_str]) + '.yuv'
-            dec_yuv = '_'.join(['dec', seq_name, QP, random_str]) + '.yuv'
-            bin_stream = '_'.join(['str', seq_name, QP, random_str]) + '.avs'
-            encoder_log = '_'.join(['[enc]', seq_name, QP, random_str]) + '.log'
-            decoder_log = '_'.join(['[dec]', seq_name, QP, random_str]) + '.log'
-            err_log = '_'.join(['err', seq_name, QP, random_str]) + '.log'
-
-            enc_base_cfg = [
-                ('encoder', 'TAppEncoder'),
-                ('-c', encoder_cfg),
-                ('-c', seq_cfg),
-                ('-i', seq_ori_yuv),
-                ('-o', rec_yuv),
-                ('-b', bin_stream),
-                ('QP', int(QP)),
-                ('FramesToBeEncoded', frames),
-                ('InputSampleBitDepth', input_bit_depth),
-                ('SampleBitDepth', sample_bit_depth),
-            ]
-            enc_other_cfg = [
-                ('QPIFrame', int(QP)),
-                ('QPPFrame', int(QP) + 1),
-                ('QPBFrame', int(QP) + 4),
-                ('stdout', encoder_log),
-                # ('err_log', err_log),
-                # ('xxEnable', 1)
-            ]
-            enc_command = ' '.join(parse_param(enc_base_cfg) + parse_param(enc_other_cfg))
-
-            # 解码参数
-            dec_cfg = [
-                ('encoder', 'TAppDecoder'),
-                ('-b', bin_stream),
-                ('-o', dec_yuv),
-                ('stdout', decoder_log),
-            ]
-            dec_command = ' '.join(parse_param(dec_cfg))
-
-            my_pool.add_job(job_func, enc_command, dec_command)
+    my_sever.set_task_dict()
+    my_sever.assemble_tasks()
 
     task_queue = queue.Queue(MAX_TASK_SIZE)
 

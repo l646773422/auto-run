@@ -1,6 +1,7 @@
 {
     "encoder_config":
     {
+        "encoder": "T AVS3",
         "encoder_cfg": "avs3_encode_ra.cfg",
         "exe": "TAppEncoder.exe"
     },

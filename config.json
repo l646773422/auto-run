@@ -1,7 +1,6 @@
 {
     "general_config":
     {
-        "encoder": "T AVS3",
         "seq_path": "Sequences",
         "cfg_path": "Sequences",
         "work_path": "."
