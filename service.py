@@ -22,46 +22,86 @@ class Service:
         self.encoder_dict = OrderedDict()
         self.tasks_list = OrderedDict()
 
+        # config 为
+        self.config = ['encoder_config', 'additional_param']
+        self.task_config = 'tasks_config'
+        self.fix_config = ['QPs', 'sequence_name']
+
+        self.output_yuv = False
+        self.output_stream = False
+
     def set_task_dict(self):
         self.spec_dict, self.encoder_dict, self.tasks_list = self.parse_tasks()
 
     def parse_tasks(self):
         with open(self.task_file_name, 'r') as _fp:
             _json_str = json.load(_fp, object_pairs_hook=OrderedDict)
-            _spec_dict = _json_str['spec_config']
+            _spec_dict = _json_str['additional_param']
             _tasks_list = _json_str['tasks_config']
             _encoder_dict = _json_str['encoder_config']
         return _spec_dict, _encoder_dict, _tasks_list
 
-    # for computation node
+    # wrong! its for client node
     def get_general_cfg(self):
         with open(self.general_file_name, 'r') as _fp:
             _json_str = json.load(_fp)
             _general_dict = _json_str['general_config']
         return _general_dict
 
+    def add_cfg(self, _dict: OrderedDict, _config: OrderedDict):
+        for _key in _config:
+            if _key not in self.fix_config:
+                _dict[_key] = _config[_key]
+
     def assemble_tasks(self):
+        """
+        函数用于组装编码任务(from self.tasks_list)
+        encoder_dict 和 spec_dict 的内容不变，
+        与解析出来的任务一同打包发送至计算节点。
+        :return: None
+        """
         _encoder_dict = self.encoder_dict
         _spec_dict = self.spec_dict
         _task_list = []
-        encoder_cfg = _encoder_dict['encoder_cfg']
-        encoder_exe = _encoder_dict['exe']
+        _encoder_cfg = _encoder_dict['encoder_cfg']
+        _encoder_exe = _encoder_dict['exe']
 
         for task in self.tasks_list:
-            random_str = ''.join(random.sample(string.ascii_letters + string.digits, 4))
+            _random_str = ''.join(random.sample(string.ascii_letters + string.digits, 4))
 
-            for QP in task['QPs'].split(' '):
+            for _QP in task['QPs'].split(' '):
+
+                _task_dict = OrderedDict()
+
                 # 先解析任务参数，然后加入专有参数 (spec_dict 里的内容)
-                seq_name = task['sequence_name']
-                seq_info = (seq_name, QP, random_str)
-                rec_yuv = mjoin('rec', *seq_info, '.yuv')
-                dec_yuv = mjoin('dec', *seq_info, '.yuv')
-                bin_stream = mjoin('str', *seq_info, '.yuv')
-                encoder_log = mjoin('[enc]', *seq_info, '.log')
-                decoder_log = mjoin('[dec]', *seq_info, '.log')
-                err_log = mjoin('[err]', *seq_info, '.log')
+                _seq_name = task['sequence_name']
 
-                pass
+                # seq_info 用于修饰输出文件名。
+                _seq_info = (_seq_name, _QP, _random_str)
+
+                rec_yuv = mjoin('rec', *_seq_info, '.yuv')
+                dec_yuv = mjoin('dec', *_seq_info, '.yuv')
+                bin_stream = mjoin('str', *_seq_info, '.bin')
+                encoder_log = mjoin('[enc]', *_seq_info, '.log')
+                decoder_log = mjoin('[dec]', *_seq_info, '.log')
+                err_log = mjoin('[err]', *_seq_info, '.log')
+
+                _task_dict['-c'] = mjoin(task['sequence_name'], '.cfg')
+                _task_dict['-i'] = mjoin(task['sequence_name'], '.yuv')
+                if self.output_yuv:
+                    _task_dict['-o'] = mjoin('rec', *_seq_info, '.yuv')
+                if self.output_stream:
+                    _task_dict['-b'] = mjoin('rec', *_seq_info, '.bin')
+                self.add_cfg(_task_dict, task)
+                _task_dict['encoder_log'] = mjoin('[enc]', *_seq_info, '.log')
+                _task_dict['decoder_log'] = mjoin('[dec]', *_seq_info, '.log')
+                _task_dict['error_log'] = mjoin('[err]', *_seq_info, '.log')
+
+                task_json = OrderedDict()
+                task_json['encoder_config'] = self.encoder_dict
+                task_json['task'] = _task_dict
+                task_json['additional_param'] = self.spec_dict
+                task_str = json.dumps(task_json)
 
 # tcp server
 def tcp_link(sock, addr, task_queue):

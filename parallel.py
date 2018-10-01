@@ -3,33 +3,8 @@ import sys
 import random
 import string
 from ThreadPool import *
+from func_lib import *
 
-
-def job_func(*commands):
-    for command in commands:
-        os.system(command)
-
-
-def path_join(*path):
-    return os.path.join(*path)
-
-
-def parse_param(cfg):
-    command = list()
-    for key, val in cfg:
-        # val = other_cfg[key]
-        if key.startswith('-'):
-            param = key + ' ' + str(val)
-        elif key.startswith('encoder'):
-            param = str(val)
-        elif key.startswith('stdout'):
-            param = '1>>' + val
-        elif key.startswith('stderr'):
-            param = '2>>' + val
-        else:
-            param = '--' + key + '=' + str(val)
-        command.append(param)
-    return command
 
 if __name__ == "__main__":
 

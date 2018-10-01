@@ -6,7 +6,7 @@
         "exe": "TAppEncoder.exe"
     },
 
-    "spec_config":
+    "additional_param":
     {
         "sample_bit_depth": "10",
         "RefineQP": 1,
