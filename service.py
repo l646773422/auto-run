@@ -30,6 +30,25 @@ class Service:
         self.output_yuv = False
         self.output_stream = False
 
+        self.task_queue = queue.Queue(MAX_TASK_SIZE)
+
+        self.sock = None
+        self.start_server()
+        self.set_task_dict()
+        pass
+
+    def start_server(self):
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.bind(('127.0.0.1', 9999))
+        self.sock.listen(5)
+        print('socket start!')
+
+    def listen(self):
+        while True:
+            _sock, _addr = self.sock.accept()
+            t = threading.Thread(target=self.publish_task, args=(_sock, _addr))
+            t.start()
+
     def set_task_dict(self):
         self.spec_dict, self.encoder_dict, self.tasks_list = self.parse_tasks()
 
@@ -77,7 +96,7 @@ class Service:
                 _seq_name = task['sequence_name']
 
                 # seq_info 用于修饰输出文件名。
-                _seq_info = (_seq_name, _QP, _random_str)
+                _seq_info = (_seq_name, _random_str, _QP)
 
                 rec_yuv = mjoin('rec', *_seq_info, '.yuv')
                 dec_yuv = mjoin('dec', *_seq_info, '.yuv')
@@ -89,54 +108,38 @@ class Service:
                 _task_dict['-c'] = mjoin(task['sequence_name'], '.cfg')
                 _task_dict['-i'] = mjoin(task['sequence_name'], '.yuv')
                 if self.output_yuv:
-                    _task_dict['-o'] = mjoin('rec', *_seq_info, '.yuv')
+                    _task_dict['-o'] = rec_yuv
                 if self.output_stream:
-                    _task_dict['-b'] = mjoin('rec', *_seq_info, '.bin')
+                    _task_dict['-b'] = bin_stream
                 self.add_cfg(_task_dict, task)
-                _task_dict['encoder_log'] = mjoin('[enc]', *_seq_info, '.log')
-                _task_dict['decoder_log'] = mjoin('[dec]', *_seq_info, '.log')
-                _task_dict['error_log'] = mjoin('[err]', *_seq_info, '.log')
+                _task_dict['encoder_log'] = encoder_log
+                _task_dict['decoder_log'] = decoder_log
+                _task_dict['error_log'] = err_log
 
-                task_json = OrderedDict()
-                task_json['encoder_config'] = self.encoder_dict
-                task_json['task'] = _task_dict
-                task_json['additional_param'] = self.spec_dict
-                task_str = json.dumps(task_json)
+                _task_json = OrderedDict()
+                _task_json['encoder_config'] = self.encoder_dict
+                _task_json['task'] = _task_dict
+                _task_json['additional_param'] = self.spec_dict
+                _task_str = json.dumps(_task_json)
+                self.task_queue.put(_task_str)
 
-# tcp server
-def tcp_link(sock, addr, task_queue):
-    print('accept new connection from {}'.format(addr))
-    sock.send(b'welcome')
-    while True:
-        data = sock.recv(1024)
-        time.sleep(1)
-        if not data or data.decode('utf-8') == 'exit':
-            break
-        # parse data
-
-        data_dict = json.loads(data.decode('utf-8'))
-        print('received data {}'.format(data_dict))
-        sock.send(b'0')
-    sock.close()
-    print('connection from %s:%s closed' % addr)
+    def publish_task(self, _sock, _addr):
+        print('accept new connection from {}'.format(_addr))
+        _sock.send(b'welcome')
+        while True:
+            data = _sock.recv(1024)
+            time.sleep(1)
+            if not data or data.decode('utf-8') == 'exit':
+                break
+            if data.decode('utf-8') == 'come on':
+                watch = self.task_queue.get().encode()
+                _sock.send(watch)
+        _sock.close()
+        print('connection from %s:%s closed' % _addr)
 
 if __name__ == '__main__':
 
     my_sever = Service()
-    my_pool = ThreadPool(100, 3)
-
-    my_sever.set_task_dict()
     my_sever.assemble_tasks()
-
-    task_queue = queue.Queue(MAX_TASK_SIZE)
-
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(('127.0.0.1', 9999))
-    s.listen(5)
-    print('waiting for connection')
-
-    while True:
-        sock, addr = s.accept()
-        t = threading.Thread(target=tcp_link, args=(sock, addr, task_queue))
-        t.start()
+    my_sever.listen()
 
