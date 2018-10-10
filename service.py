@@ -3,6 +3,7 @@ import threading
 import time
 import json
 import queue
+import select
 from parallel import *
 from func_lib import *
 from collections import OrderedDict
@@ -32,21 +33,30 @@ class Service:
 
         self.task_queue = queue.Queue(MAX_TASK_SIZE)
 
-        self.sock = None
+        self.server = None
         self.start_server()
         self.set_task_dict()
-        pass
+
+        self.server_list = [self.server]
+        self.outputs = []
+        self.excepts = {}
+
+        self.interval = 1
+        self.reg_timer(self.polling_info, self.interval)
+        print('timer start!')
 
     def start_server(self):
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.bind(('127.0.0.1', 9999))
-        self.sock.listen(5)
-        print('socket start!')
+        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # self.server.setblocking(False)
+        self.server.bind(('127.0.0.1', 9999))
+        self.server.listen(5)
+        print('server start!')
 
     def listen(self):
+        readable, writable, exceptional = select.select(self.server_list, self.outputs, self.excepts)
         while True:
-            _sock, _addr = self.sock.accept()
-            t = threading.Thread(target=self.publish_task, args=(_sock, _addr))
+            _sock, _addr = self.server.accept()
+            t = threading.Thread(target=self.publish_task, args=(_sock, _addr, 'node1'))
             t.start()
 
     def set_task_dict(self):
@@ -74,9 +84,9 @@ class Service:
 
     def assemble_tasks(self):
         """
-        函数用于组装编码任务(from self.tasks_list)
-        encoder_dict 和 spec_dict 的内容不变，
-        与解析出来的任务一同打包发送至计算节点。
+        函数用于组装编码任务(From self.tasks_list)
+        将编码器信息(encoder_dict)、特殊参数(spec_dict)和解析任务一同打包
+        添加至任务队列中。
         :return: None
         """
         _encoder_dict = self.encoder_dict
@@ -123,23 +133,40 @@ class Service:
                 _task_str = json.dumps(_task_json)
                 self.task_queue.put(_task_str)
 
-    def publish_task(self, _sock, _addr):
+    def polling_info(self):
+        for _server in self.server_list:
+            if _server == self.server:
+                continue
+            _server.send('get msg'.encode('utf-8'))
+
+    def reg_timer(self, _func, _interval=1):
+        _timer = threading.Timer(_interval, self.reg_timer, [_func], {'_interval': _interval})
+        _timer.start()
+        _func()
+
+    def publish_task(self, _sock, _addr, _node_name):
         print('accept new connection from {}'.format(_addr))
         _sock.send(b'welcome')
+        # return None
         while True:
-            data = _sock.recv(1024)
             time.sleep(1)
-            if not data or data.decode('utf-8') == 'exit':
-                break
-            if data.decode('utf-8') == 'come on':
-                watch = self.task_queue.get().encode()
-                _sock.send(watch)
-        _sock.close()
-        print('connection from %s:%s closed' % _addr)
+            try:
+                data = _sock.recv(1024)
+            except:
+                time.sleep(0.1)
+                continue
+
+        #     data = _sock.recv(1024)
+        #     if not data or data.decode('utf-8') == 'exit':
+        #         break
+        #     if data.decode('utf-8') == 'come on':
+        #         watch = self.task_queue.get().encode()
+        #         _sock.send(watch)
+        # _sock.close()
+        # print('connection from %s:%s closed' % _addr)
 
 if __name__ == '__main__':
 
     my_sever = Service()
     my_sever.assemble_tasks()
     my_sever.listen()
-
