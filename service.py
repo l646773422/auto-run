@@ -39,7 +39,8 @@ class Service:
 
         self.server_list = [self.server]
         self.outputs = []
-        self.excepts = {}
+        self.excepts = []
+        self.msg_queue = {}
 
         self.interval = 1
         self.reg_timer(self.polling_info, self.interval)
@@ -47,17 +48,76 @@ class Service:
 
     def start_server(self):
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # self.server.setblocking(False)
         self.server.bind(('127.0.0.1', 9999))
         self.server.listen(5)
         print('server start!')
 
     def listen(self):
-        readable, writable, exceptional = select.select(self.server_list, self.outputs, self.excepts)
         while True:
-            _sock, _addr = self.server.accept()
-            t = threading.Thread(target=self.publish_task, args=(_sock, _addr, 'node1'))
-            t.start()
+            readable, writable, exceptional = select.select(self.server_list, self.outputs, self.excepts)
+            self.get_msg(readable)
+            self.write_msg(writable)
+            self.deal_except(exceptional)
+
+    def get_msg(self, _read_able):
+        for _server in _read_able:
+            if _server is self.server:
+                connection, client_addr = _server.accept()
+                print("new connection from {}".format(client_addr))
+                connection.setblocking(False)
+                self.server_list.append(connection)
+
+                self.msg_queue[connection] = queue.Queue()
+            else:
+                try:
+                    data = _server.recv(1024)
+                except ConnectionResetError:
+                    self.clear_server(_server)
+                    break
+
+                if not data == b'exit':
+                    self.msg_queue[_server].put(data)
+                    if _server not in self.outputs:
+                        self.outputs.append(_server)
+                else:
+                    print('client [{}] closed'.format(_server.getpeername()[1]))
+                    if _server in self.outputs:
+                        self.outputs.remove(_server)
+                    self.server_list.remove(_server)
+                    _server.close()
+                    del self.msg_queue[_server]
+
+    def parse_all_msg(self):
+        for _server in self.msg_queue.keys():
+            while not self.msg_queue[_server].empty():
+                pass
+
+    def parse_msg(self, msg):
+        pass
+
+    def write_msg(self, _write_able):
+        for _server in _write_able:
+            try:
+                msg = self.msg_queue[_server].get_nowait()
+                _server.send(msg)
+            except queue.Empty:
+                print('[{}] msg queue is empty'.format(_server.getpeername()[1]))
+                self.outputs.remove(_server)
+
+    def deal_except(self, exceptional):
+        for _server in exceptional:
+            self.clear_server(_server)
+
+    def clear_server(self, _server):
+        if _server in self.server_list:
+            self.server_list.remove(_server)
+        if _server in self.outputs:
+            self.outputs.remove(_server)
+        # if _server in self.excepts:
+        #     self.excepts.remove(_server)
+        _server.close()
+        if _server in self.msg_queue.keys():
+            del self.msg_queue[_server]
 
     def set_task_dict(self):
         self.spec_dict, self.encoder_dict, self.tasks_list = self.parse_tasks()
@@ -137,7 +197,10 @@ class Service:
         for _server in self.server_list:
             if _server == self.server:
                 continue
-            _server.send('get msg'.encode('utf-8'))
+            try:
+                _server.send('get msg'.encode('utf-8'))
+            except ConnectionResetError:
+                self.clear_server(_server)
 
     def reg_timer(self, _func, _interval=1):
         _timer = threading.Timer(_interval, self.reg_timer, [_func], {'_interval': _interval})

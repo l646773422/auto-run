@@ -1,6 +1,7 @@
 import socket
 import json
 from ThreadPool import *
+from collections import OrderedDict
 
 # TCP
 # init thread pool & socket server
@@ -16,18 +17,21 @@ class Client:
 
 node_id = 0
 node_name = 'node01'
+idle_cpu = 4
+
+info = {
+    'type': 'node info',
+    'info': OrderedDict({
+        'node_id': node_id,
+        'node_name': node_name,
+        'idle_cpu': idle_cpu,
+    })
+}
 
 thread_pool = ThreadPool(100, 4)
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s.connect(('127.0.0.1', 9999))
-print(s.recv(1024).decode('utf-8'))
-# s.send('come on'.encode('utf-8'))
 while True:
     task_str = s.recv(1024).decode('utf-8')
-    time.sleep(0.1)
-    # task_dict = json.loads(task_str)
     print(task_str)
-
-s.send(b'exit')
-s.close()
 
