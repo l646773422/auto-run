@@ -14,12 +14,15 @@ MAX_BUFFER_SIZE = 1024
 
 class Service:
 
+    class ClientInfo:
+        pass
+
     def __init__(self, _host='127.0.0.1', _port=9999):
         self.node_nums = 0
         self.nodes_info = []
         self.host = _host
         self.port = _port
-        self.task_file_name = 'tasks.json'
+        self.task_file_name = 'demo_tasks.json'
         self.general_file_name = 'config.json'
 
         self.spec_dict = OrderedDict()
@@ -128,15 +131,10 @@ class Service:
             del self.msg_queue[_server]
 
     def update_task_dict(self):
-        self.parse_task_json(self.task_file_name)
-
-    def parse_task_json(self, _task_file_name):
-        with open(_task_file_name, 'r') as _fp:
-            _json_str = json.load(_fp, object_pairs_hook=OrderedDict)
-            _spec_dict = _json_str['additional_param']
-            _tasks_list = _json_str['tasks_config']
-            _encoder_dict = _json_str['encoder_config']
-            self.spec_dict, self.encoder_dict, self.tasks_list = _spec_dict, _encoder_dict, _tasks_list
+        _json_dict = load_json_file(self.task_file_name)
+        self.spec_dict = _json_dict['additional_param']
+        self.encoder_dict = _json_dict['encoder_config']
+        self.tasks_list = _json_dict['tasks_config']
 
     # wrong! its for client node
     def get_general_cfg(self):
@@ -194,12 +192,12 @@ class Service:
                 _task_dict['decoder_log'] = decoder_log
                 _task_dict['error_log'] = err_log
 
-                _task_json = OrderedDict()
-                _task_json['encoder_config'] = self.encoder_dict
-                _task_json['task'] = _task_dict
-                _task_json['additional_param'] = self.spec_dict
-                _task_str = json.dumps(_task_json)
-                self.task_queue.put(_task_str)
+                _all_info = OrderedDict(type='task', task_description='codec')
+                _all_info['encoder_config'] = self.encoder_dict
+                _all_info['task'] = _task_dict
+                _all_info['additional_param'] = self.spec_dict
+                _task_json = json.dumps(_all_info)
+                self.task_queue.put(_task_json)
 
     def polling_info(self):
         for _server in self.server_list:

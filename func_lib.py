@@ -69,3 +69,16 @@ def kw_to_json(**kwargs):
     return json.dumps(OrderedDict(
         **kwargs
     ))
+
+
+def load_json_file(_task_file_name):
+    with open(_task_file_name, 'r') as _fp:
+        try:
+            _json_dict = json.load(_fp, object_pairs_hook=OrderedDict)
+            return _json_dict
+        except json.decoder.JSONDecodeError:
+            print('wrong json string.')
+            _json_dict = kw_to_json(
+                type='None'
+            )
+            return _json_dict

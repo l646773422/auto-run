@@ -48,11 +48,19 @@ class Client:
                 if _data['type'] == 'get msg':
                     client_info = self.to_json().encode('utf-8')
                     _server.send(client_info)
+                elif _data['type'] == 'task':
+                    # parse task
+
+                    self.idle_core += 1
+                    pass
             except ConnectionResetError:
                 print('remote server error.')
                 exit(1)
             except json.decoder.JSONDecodeError:
                 print('wrong json string.')
+
+    def parse_task_dict(self):
+        pass
 
     def listen(self):
         while True:
