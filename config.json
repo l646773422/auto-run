@@ -1,8 +1,24 @@
 {
-    "general_config":
-    {
-        "seq_path": "Sequences",
-        "cfg_path": "Sequences",
-        "work_path": "."
-    }
+    "general_config":[
+        {
+            "codec": [
+              {
+                "encoder type": "AVS3",
+                "encoder name": "TAppEncoder"
+              },
+
+              {
+                "encoder type": "RD",
+                "encoder name": "encoder"
+              }
+            ],
+          "deep learning":[
+            {
+              "framework": "tensorflow",
+              "script name": "train.py"
+            }
+          ]
+        }
+    ]
+
 }

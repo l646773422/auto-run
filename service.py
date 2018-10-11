@@ -9,13 +9,16 @@ from func_lib import *
 from collections import OrderedDict
 
 MAX_TASK_SIZE = 100
+MAX_BUFFER_SIZE = 1024
 
 
 class Service:
 
-    def __init__(self):
+    def __init__(self, _host='127.0.0.1', _port=9999):
         self.node_nums = 0
         self.nodes_info = []
+        self.host = _host
+        self.port = _port
         self.task_file_name = 'tasks.json'
         self.general_file_name = 'config.json'
 
@@ -34,30 +37,32 @@ class Service:
         self.task_queue = queue.Queue(MAX_TASK_SIZE)
 
         self.server = None
-        self.start_server()
-        self.set_task_dict()
 
-        self.server_list = [self.server]
+        self.server_list = []   # include server!
         self.outputs = []
-        self.excepts = []
         self.msg_queue = {}
 
         self.interval = 1
         self.reg_timer(self.polling_info, self.interval)
-        print('timer start!')
+
+        self.query_json = kw_to_json(
+            type='get msg'
+        ).encode('utf-8')
 
     def start_server(self):
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server.bind(('127.0.0.1', 9999))
+        self.server.bind((self.host, self.port))
         self.server.listen(5)
+        self.server_list.append(self.server)
         print('server start!')
 
     def listen(self):
         while True:
-            readable, writable, exceptional = select.select(self.server_list, self.outputs, self.excepts)
+            readable, writable, exceptional = select.select(self.server_list, self.outputs, self.server_list)
             self.get_msg(readable)
-            self.write_msg(writable)
+            # self.write_msg(writable)
             self.deal_except(exceptional)
+            time.sleep(0.1)
 
     def get_msg(self, _read_able):
         for _server in _read_able:
@@ -70,13 +75,15 @@ class Service:
                 self.msg_queue[connection] = queue.Queue()
             else:
                 try:
-                    data = _server.recv(1024)
+                    data = _server.recv(MAX_BUFFER_SIZE)
                 except ConnectionResetError:
+                    print('error! client [{}] was closed'.format(_server.getpeername()[1]))
                     self.clear_server(_server)
                     break
 
                 if not data == b'exit':
                     self.msg_queue[_server].put(data)
+                    print(data)
                     if _server not in self.outputs:
                         self.outputs.append(_server)
                 else:
@@ -106,6 +113,7 @@ class Service:
 
     def deal_except(self, exceptional):
         for _server in exceptional:
+            print('error! client [{}] was closed'.format(_server.getpeername()[1]))
             self.clear_server(_server)
 
     def clear_server(self, _server):
@@ -119,16 +127,16 @@ class Service:
         if _server in self.msg_queue.keys():
             del self.msg_queue[_server]
 
-    def set_task_dict(self):
-        self.spec_dict, self.encoder_dict, self.tasks_list = self.parse_tasks()
+    def update_task_dict(self):
+        self.parse_task_json(self.task_file_name)
 
-    def parse_tasks(self):
-        with open(self.task_file_name, 'r') as _fp:
+    def parse_task_json(self, _task_file_name):
+        with open(_task_file_name, 'r') as _fp:
             _json_str = json.load(_fp, object_pairs_hook=OrderedDict)
             _spec_dict = _json_str['additional_param']
             _tasks_list = _json_str['tasks_config']
             _encoder_dict = _json_str['encoder_config']
-        return _spec_dict, _encoder_dict, _tasks_list
+            self.spec_dict, self.encoder_dict, self.tasks_list = _spec_dict, _encoder_dict, _tasks_list
 
     # wrong! its for client node
     def get_general_cfg(self):
@@ -198,8 +206,13 @@ class Service:
             if _server == self.server:
                 continue
             try:
-                _server.send('get msg'.encode('utf-8'))
+                # print('sending to [{}]'.format(_server.getpeername()[1]))
+                _server.send(self.query_json)
             except ConnectionResetError:
+                print('error! client [{}] was closed'.format(_server.getpeername()[1]))
+                self.clear_server(_server)
+            except ConnectionAbortedError:
+                print('error! client [{}] was closed'.format(_server.getpeername()[1]))
                 self.clear_server(_server)
 
     def reg_timer(self, _func, _interval=1):
@@ -208,28 +221,12 @@ class Service:
         _func()
 
     def publish_task(self, _sock, _addr, _node_name):
-        print('accept new connection from {}'.format(_addr))
-        _sock.send(b'welcome')
-        # return None
-        while True:
-            time.sleep(1)
-            try:
-                data = _sock.recv(1024)
-            except:
-                time.sleep(0.1)
-                continue
-
-        #     data = _sock.recv(1024)
-        #     if not data or data.decode('utf-8') == 'exit':
-        #         break
-        #     if data.decode('utf-8') == 'come on':
-        #         watch = self.task_queue.get().encode()
-        #         _sock.send(watch)
-        # _sock.close()
-        # print('connection from %s:%s closed' % _addr)
+        pass
 
 if __name__ == '__main__':
 
     my_sever = Service()
+    my_sever.start_server()
+    my_sever.update_task_dict()
     my_sever.assemble_tasks()
     my_sever.listen()

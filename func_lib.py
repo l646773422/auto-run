@@ -1,4 +1,7 @@
 import os
+import socket
+import json
+from collections import OrderedDict
 
 
 def parse_info(info: list):
@@ -49,3 +52,20 @@ def parse_param(cfg):
             param = '--' + key + '=' + str(val)
         command.append(param)
     return command
+
+
+def get_host_ip():
+    server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        server.connect(('8.8.8.8', 80))
+        ip = server.getsockname()[0]
+    finally:
+        server.close()
+
+    return ip
+
+
+def kw_to_json(**kwargs):
+    return json.dumps(OrderedDict(
+        **kwargs
+    ))
