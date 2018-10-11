@@ -18,10 +18,10 @@ class Client:
         self.server = None
 
         # client info
-        self.idle_core = 0
         self.name = 'node01'
         self.ip = get_host_ip()
         self.total_core = cpu_count()
+        self.idle_core = self.total_core
         self.md5 = hashlib.md5()
         self.md5.update((self.name+self.ip).encode('utf-8'))
         self.identifier = str(self.md5.hexdigest())
@@ -32,11 +32,14 @@ class Client:
 
     def to_json(self):
         return json.dumps(OrderedDict(
-            total_core=self.total_core,
-            idle_core=self.idle_core,
-            name=self.name,
-            ip=self.ip,
-            identifier=self.identifier,
+            type='get info',
+            info=OrderedDict(
+                total_core=self.total_core,
+                idle_core=self.idle_core,
+                name=self.name,
+                ip=self.ip,
+                identifier=self.identifier,
+            )
         ))
 
     def get_msg(self, _readable):
@@ -45,7 +48,7 @@ class Client:
                 _json = _server.recv(MAX_BUFFER_SIZE)
                 _data = json.loads(_json, object_pairs_hook=OrderedDict)
 
-                if _data['type'] == 'get msg':
+                if _data['type'] == 'get info':
                     client_info = self.to_json().encode('utf-8')
                     _server.send(client_info)
                 elif _data['type'] == 'task':

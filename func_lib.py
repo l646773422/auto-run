@@ -82,3 +82,20 @@ def load_json_file(_task_file_name):
                 type='None'
             )
             return _json_dict
+
+
+def update_from_json(_obj, _json):
+    try:
+        _data_dict = json.loads(_json)
+        update_from_dict(_obj, _data_dict)
+    except json.JSONDecodeError:
+        print('json decode error')
+        return
+
+
+def update_from_dict(_obj, kwargs):
+    for key in kwargs:
+        if hasattr(_obj, key):
+            setattr(_obj, key, kwargs[key])
+
+

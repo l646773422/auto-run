@@ -15,7 +15,24 @@ MAX_BUFFER_SIZE = 1024
 class Service:
 
     class ClientInfo:
-        pass
+
+        def __init__(self):
+            self.total_core = 0
+            self.idle_core = 0
+            self.name = 'None'
+            self.active = False
+            self.ip = 'None'
+            self.identifier = 'None'
+
+        def __str__(self):
+            return """\
+            total_core  = {},
+            idle_core   = {},
+            name        = {},
+            active      = {},
+            ip          = {},
+            identifier  = {},
+            """.format(self.total_core, self.idle_core, self.name, self.active, self.ip, self.identifier)
 
     def __init__(self, _host='127.0.0.1', _port=9999):
         self.node_nums = 0
@@ -44,12 +61,13 @@ class Service:
         self.server_list = []   # include server!
         self.outputs = []
         self.msg_queue = {}
+        self.client_info_list = {}
 
         self.interval = 1
         self.reg_timer(self.polling_info, self.interval)
 
         self.query_json = kw_to_json(
-            type='get msg'
+            type='get info'
         ).encode('utf-8')
 
     def start_server(self):
@@ -74,21 +92,32 @@ class Service:
                 print("new connection from {}".format(client_addr))
                 connection.setblocking(False)
                 self.server_list.append(connection)
+                self.client_info_list[connection] = self.ClientInfo()
 
                 self.msg_queue[connection] = queue.Queue()
             else:
                 try:
-                    data = _server.recv(MAX_BUFFER_SIZE)
+                    _data = _server.recv(MAX_BUFFER_SIZE)
                 except ConnectionResetError:
                     print('error! client [{}] was closed'.format(_server.getpeername()[1]))
                     self.clear_server(_server)
                     break
 
-                if not data == b'exit':
-                    self.msg_queue[_server].put(data)
-                    print(data)
-                    if _server not in self.outputs:
-                        self.outputs.append(_server)
+                if not _data == b'exit':
+                    self.msg_queue[_server].put(_data)
+                    # print(_data)
+                    try:
+                        _data = json.loads(_data, object_pairs_hook=OrderedDict)
+                        if _data['type'] == 'get info' and 'info' in _data.keys():
+                            update_from_dict(self.client_info_list[_server], _data['info'])
+                            print(self.client_info_list[_server])
+
+                    except json.JSONDecodeError:
+                        print('parsing json string error!')
+                        break
+
+                    # if _server not in self.outputs:
+                    #     self.outputs.append(_server)
                 else:
                     print('client [{}] closed'.format(_server.getpeername()[1]))
                     if _server in self.outputs:
