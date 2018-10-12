@@ -1,8 +1,0 @@
-{
-    "general_config":
-    {
-        "seq_path": "Sequences",
-        "cfg_path": "Sequences",
-        "work_path": "."
-    }
-}

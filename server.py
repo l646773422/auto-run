@@ -3,19 +3,43 @@ import threading
 import time
 import json
 import queue
+import select
 from parallel import *
 from func_lib import *
 from collections import OrderedDict
 
 MAX_TASK_SIZE = 100
+MAX_BUFFER_SIZE = 1024
 
 
 class Service:
 
-    def __init__(self):
+    class ClientInfo:
+
+        def __init__(self):
+            self.total_core = 0
+            self.idle_core = 0
+            self.name = 'None'
+            self.active = False
+            self.ip = 'None'
+            self.identifier = 'None'
+
+        def __str__(self):
+            return """\
+            total_core  = {},
+            idle_core   = {},
+            name        = {},
+            active      = {},
+            ip          = {},
+            identifier  = {},
+            """.format(self.total_core, self.idle_core, self.name, self.active, self.ip, self.identifier)
+
+    def __init__(self, _host='127.0.0.1', _port=9999):
         self.node_nums = 0
         self.nodes_info = []
-        self.task_file_name = 'tasks.json'
+        self.host = _host
+        self.port = _port
+        self.task_file_name = 'demo_tasks.json'
         self.general_file_name = 'config.json'
 
         self.spec_dict = OrderedDict()
@@ -32,33 +56,114 @@ class Service:
 
         self.task_queue = queue.Queue(MAX_TASK_SIZE)
 
-        self.sock = None
-        self.start_server()
-        self.set_task_dict()
-        pass
+        self.server = None
+
+        self.server_list = []   # include server!
+        self.outputs = []
+        self.msg_queue = {}
+        self.client_info_list = {}
+
+        self.interval = 1
+        self.reg_timer(self.polling_info, self.interval)
+
+        self.query_json = kw_to_json(
+            type='get info'
+        ).encode('utf-8')
 
     def start_server(self):
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.bind(('127.0.0.1', 9999))
-        self.sock.listen(5)
-        print('socket start!')
+        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server.bind((self.host, self.port))
+        self.server.listen(5)
+        self.server_list.append(self.server)
+        print('server start!')
 
     def listen(self):
         while True:
-            _sock, _addr = self.sock.accept()
-            t = threading.Thread(target=self.publish_task, args=(_sock, _addr))
-            t.start()
+            readable, writable, exceptional = select.select(self.server_list, self.outputs, self.server_list)
+            self.get_msg(readable)
+            # self.write_msg(writable)
+            self.deal_except(exceptional)
+            time.sleep(0.1)
 
-    def set_task_dict(self):
-        self.spec_dict, self.encoder_dict, self.tasks_list = self.parse_tasks()
+    def get_msg(self, _read_able):
+        for _server in _read_able:
+            if _server is self.server:
+                connection, client_addr = _server.accept()
+                print("new connection from {}".format(client_addr))
+                connection.setblocking(False)
+                self.server_list.append(connection)
+                self.client_info_list[connection] = self.ClientInfo()
 
-    def parse_tasks(self):
-        with open(self.task_file_name, 'r') as _fp:
-            _json_str = json.load(_fp, object_pairs_hook=OrderedDict)
-            _spec_dict = _json_str['additional_param']
-            _tasks_list = _json_str['tasks_config']
-            _encoder_dict = _json_str['encoder_config']
-        return _spec_dict, _encoder_dict, _tasks_list
+                self.msg_queue[connection] = queue.Queue()
+            else:
+                try:
+                    _data = _server.recv(MAX_BUFFER_SIZE)
+                except ConnectionResetError:
+                    print('error! client [{}] was closed'.format(_server.getpeername()[1]))
+                    self.clear_server(_server)
+                    break
+
+                if not _data == b'exit':
+                    self.msg_queue[_server].put(_data)
+                    # print(_data)
+                    try:
+                        _data = json.loads(_data, object_pairs_hook=OrderedDict)
+                        if _data['type'] == 'get info' and 'info' in _data.keys():
+                            update_from_dict(self.client_info_list[_server], _data['info'])
+                            print(self.client_info_list[_server])
+
+                    except json.JSONDecodeError:
+                        print('parsing json string error!')
+                        break
+
+                    # if _server not in self.outputs:
+                    #     self.outputs.append(_server)
+                else:
+                    print('client [{}] closed'.format(_server.getpeername()[1]))
+                    if _server in self.outputs:
+                        self.outputs.remove(_server)
+                    self.server_list.remove(_server)
+                    _server.close()
+                    del self.msg_queue[_server]
+
+    def parse_all_msg(self):
+        for _server in self.msg_queue.keys():
+            while not self.msg_queue[_server].empty():
+                pass
+
+    def parse_msg(self, msg):
+        pass
+
+    def write_msg(self, _write_able):
+        for _server in _write_able:
+            try:
+                msg = self.msg_queue[_server].get_nowait()
+                _server.send(msg)
+            except queue.Empty:
+                print('[{}] msg queue is empty'.format(_server.getpeername()[1]))
+                self.outputs.remove(_server)
+
+    def deal_except(self, exceptional):
+        for _server in exceptional:
+            print('error! client [{}] was closed'.format(_server.getpeername()[1]))
+            self.clear_server(_server)
+
+    def clear_server(self, _server):
+        if _server in self.server_list:
+            self.server_list.remove(_server)
+        if _server in self.outputs:
+            self.outputs.remove(_server)
+        # if _server in self.excepts:
+        #     self.excepts.remove(_server)
+        _server.close()
+        if _server in self.msg_queue.keys():
+            del self.msg_queue[_server]
+
+    def update_task_dict(self):
+        _json_dict = load_json_file(self.task_file_name)
+        self.spec_dict = _json_dict['additional_param']
+        self.encoder_dict = _json_dict['encoder_config']
+        self.tasks_list = _json_dict['tasks_config']
 
     # wrong! its for client node
     def get_general_cfg(self):
@@ -74,9 +179,9 @@ class Service:
 
     def assemble_tasks(self):
         """
-        函数用于组装编码任务(from self.tasks_list)
-        encoder_dict 和 spec_dict 的内容不变，
-        与解析出来的任务一同打包发送至计算节点。
+        函数用于组装编码任务(From self.tasks_list)
+        将编码器信息(encoder_dict)、特殊参数(spec_dict)和解析任务一同打包
+        添加至任务队列中。
         :return: None
         """
         _encoder_dict = self.encoder_dict
@@ -116,30 +221,39 @@ class Service:
                 _task_dict['decoder_log'] = decoder_log
                 _task_dict['error_log'] = err_log
 
-                _task_json = OrderedDict()
-                _task_json['encoder_config'] = self.encoder_dict
-                _task_json['task'] = _task_dict
-                _task_json['additional_param'] = self.spec_dict
-                _task_str = json.dumps(_task_json)
-                self.task_queue.put(_task_str)
+                _all_info = OrderedDict(type='task', task_description='codec')
+                _all_info['encoder_config'] = self.encoder_dict
+                _all_info['task'] = _task_dict
+                _all_info['additional_param'] = self.spec_dict
+                _task_json = json.dumps(_all_info)
+                self.task_queue.put(_task_json)
 
-    def publish_task(self, _sock, _addr):
-        print('accept new connection from {}'.format(_addr))
-        _sock.send(b'welcome')
-        while True:
-            data = _sock.recv(1024)
-            time.sleep(1)
-            if not data or data.decode('utf-8') == 'exit':
-                break
-            if data.decode('utf-8') == 'come on':
-                watch = self.task_queue.get().encode()
-                _sock.send(watch)
-        _sock.close()
-        print('connection from %s:%s closed' % _addr)
+    def polling_info(self):
+        for _server in self.server_list:
+            if _server == self.server:
+                continue
+            try:
+                # print('sending to [{}]'.format(_server.getpeername()[1]))
+                _server.send(self.query_json)
+            except ConnectionResetError:
+                print('error! client [{}] was closed'.format(_server.getpeername()[1]))
+                self.clear_server(_server)
+            except ConnectionAbortedError:
+                print('error! client [{}] was closed'.format(_server.getpeername()[1]))
+                self.clear_server(_server)
+
+    def reg_timer(self, _func, _interval=1):
+        _timer = threading.Timer(_interval, self.reg_timer, [_func], {'_interval': _interval})
+        _timer.start()
+        _func()
+
+    def publish_task(self, _sock, _addr, _node_name):
+        pass
 
 if __name__ == '__main__':
 
     my_sever = Service()
+    my_sever.start_server()
+    my_sever.update_task_dict()
     my_sever.assemble_tasks()
     my_sever.listen()
-

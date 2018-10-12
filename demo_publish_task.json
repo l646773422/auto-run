@@ -1,0 +1,23 @@
+{
+    "type": "task",
+    "encoder_config": {
+        "encoder": "T AVS3",
+        "encoder_cfg": "avs3_encode_ra.cfg",
+        "exe": "TAppEncoder.exe"
+    },
+    "task": {
+        "-c": "BasketballPass_416x240_50.cfg",
+        "-i": "BasketballPass_416x240_50.yuv",
+        "intra_period": "5",
+        "input_bit_depth": "8",
+        "frames": "300",
+        "encoder_log": "[enc]_BasketballPass_416x240_50_ghAy_22.log",
+        "decoder_log": "[dec]_BasketballPass_416x240_50_ghAy_22.log",
+        "error_log": "[err]_BasketballPass_416x240_50_ghAy_22.log"
+    },
+    "additional_param": {
+        "sample_bit_depth": "10",
+        "RefineQP": 1,
+        "LambdaRatioI": 1
+    }
+}
