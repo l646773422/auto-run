@@ -20,7 +20,7 @@ class Service:
             self.total_core = 0
             self.idle_core = 0
             self.name = 'None'
-            self.active = False
+            self.active = True
             self.ip = 'None'
             self.identifier = 'None'
 
@@ -46,6 +46,8 @@ class Service:
         self.encoder_dict = OrderedDict()
         self.tasks_list = OrderedDict()
 
+        self.client_lock = threading.Lock()
+
         # config 为
         self.config = ['encoder_config', 'additional_param']
         self.task_config = 'tasks_config'
@@ -64,7 +66,6 @@ class Service:
         self.client_info_list = {}
 
         self.interval = 1
-        self.reg_timer(self.polling_info, self.interval)
 
         self.query_json = kw_to_json(
             type='get info'
@@ -81,7 +82,7 @@ class Service:
         while True:
             readable, writable, exceptional = select.select(self.server_list, self.outputs, self.server_list)
             self.get_msg(readable)
-            # self.write_msg(writable)
+            self.write_msg(writable)
             self.deal_except(exceptional)
             time.sleep(0.1)
 
@@ -92,7 +93,9 @@ class Service:
                 print("new connection from {}".format(client_addr))
                 connection.setblocking(False)
                 self.server_list.append(connection)
+                self.client_lock.acquire()
                 self.client_info_list[connection] = self.ClientInfo()
+                self.client_lock.release()
 
                 self.msg_queue[connection] = queue.Queue()
             else:
@@ -104,13 +107,11 @@ class Service:
                     break
 
                 if not _data == b'exit':
-                    self.msg_queue[_server].put(_data)
-                    # print(_data)
                     try:
                         _data = json.loads(_data, object_pairs_hook=OrderedDict)
                         if _data['type'] == 'get info' and 'info' in _data.keys():
                             update_from_dict(self.client_info_list[_server], _data['info'])
-                            print(self.client_info_list[_server])
+                            # print(self.client_info_list[_server])
 
                     except json.JSONDecodeError:
                         print('parsing json string error!')
@@ -120,11 +121,7 @@ class Service:
                     #     self.outputs.append(_server)
                 else:
                     print('client [{}] closed'.format(_server.getpeername()[1]))
-                    if _server in self.outputs:
-                        self.outputs.remove(_server)
-                    self.server_list.remove(_server)
-                    _server.close()
-                    del self.msg_queue[_server]
+                    self.clear_server(_server)
 
     def parse_all_msg(self):
         for _server in self.msg_queue.keys():
@@ -140,7 +137,6 @@ class Service:
                 msg = self.msg_queue[_server].get_nowait()
                 _server.send(msg)
             except queue.Empty:
-                print('[{}] msg queue is empty'.format(_server.getpeername()[1]))
                 self.outputs.remove(_server)
 
     def deal_except(self, exceptional):
@@ -158,6 +154,8 @@ class Service:
         _server.close()
         if _server in self.msg_queue.keys():
             del self.msg_queue[_server]
+        if _server in self.client_info_list.keys():
+            self.client_info_list[_server].active = False
 
     def update_task_dict(self):
         _json_dict = load_json_file(self.task_file_name)
@@ -226,7 +224,10 @@ class Service:
                 _all_info['task'] = _task_dict
                 _all_info['additional_param'] = self.spec_dict
                 _task_json = json.dumps(_all_info)
-                self.task_queue.put(_task_json)
+                self.task_queue.put(_task_json.encode('utf-8'))
+
+    def start_polling(self):
+        reg_timer(self.polling_info, _interval= self.interval)
 
     def polling_info(self):
         for _server in self.server_list:
@@ -242,13 +243,35 @@ class Service:
                 print('error! client [{}] was closed'.format(_server.getpeername()[1]))
                 self.clear_server(_server)
 
-    def reg_timer(self, _func, _interval=1):
-        _timer = threading.Timer(_interval, self.reg_timer, [_func], {'_interval': _interval})
-        _timer.start()
-        _func()
+    def start_publishing(self, _output_info=False):
+        _cond = self.task_queue.qsize
+        reg_timer(self.publish_task, _output_info, _interval=0.5, _cond_func=_cond)
 
-    def publish_task(self, _sock, _addr, _node_name):
-        pass
+    def publish_task(self, _output_info=False):
+        # 考虑使用计时器实现，在启动发布任务后，每隔一段时间搜索是否有闲置节点
+        # 直到所有任务发布结束。(所以在轮询结束时加一个 <条件Timer> )
+
+        # 遍历过程中，可能有子节点进入，此时会改变 client_info_list
+        # 所以。加锁
+        self.client_lock.acquire()
+        for _server, _info in self.client_info_list.items():
+            if _info.active is True and _info.idle_core > 0:
+                try:
+                    _json_data = self.task_queue.get_nowait()
+
+                    if _output_info:
+                        print(_json_data)
+
+                    self.msg_queue[_server].put(_json_data)
+                    if _server not in self.outputs:
+                        self.outputs.append(_server)
+                    time.sleep(1.0)
+                except queue.Empty:
+                    print('task queue is empty')
+                    self.client_lock.release()
+                    return
+        self.client_lock.release()
+
 
 if __name__ == '__main__':
 
@@ -256,4 +279,6 @@ if __name__ == '__main__':
     my_sever.start_server()
     my_sever.update_task_dict()
     my_sever.assemble_tasks()
+    my_sever.start_polling()
+    my_sever.start_publishing(_output_info=True)
     my_sever.listen()
