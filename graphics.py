@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import *
 from server import *
 import sys
 
-serverInstance = Server()
+#serverInstance = Server()
 
 #task publish widget:shows after task publish button clicked
 class TaskPublishSubWidget(QWidget):
@@ -47,6 +47,9 @@ class ServerWindow(QWidget):
         self.setWindowTitle("服务端")
         self.resize(1024,768)
 
+        #Server instance
+        self.serverInstance = Server()
+
         #Buttons
         self.connectButton = QPushButton("启动服务端")
         self.connectButton.setFixedSize(150,75)
@@ -74,7 +77,7 @@ class ServerWindow(QWidget):
         self.tabWidget.addTab(self.serverLogTab,"系统日志")
 
         self.taskPublishSubWidget = None
-        self.isConnected = True
+        self.isConnected = False
 
         self.mainLayout = QGridLayout()
         self.mainLayout.addLayout(self.buttonLayout,0,0,1,1)
@@ -94,13 +97,15 @@ class ServerWindow(QWidget):
     #Overload close event to shut down server instance
     def closeEvent(self, event):
         if self.isConnected == True:
-            serverInstance.clear_server()
+            self.serverInstance.close_server()
+            del self.serverInstance
+
         event.accept()
 
     @pyqtSlot()
     def startServerSlot(self):
-        if self.isConnected == True:
-            ret = serverInstance.start_server()
+        if self.isConnected == False:
+            ret = self.serverInstance.start_server()
             if ret == True:
                 # self.infoShowPanel.append("Server Start!")
                 self.serverLogTab.logTestView.append("Server Start!")
@@ -117,10 +122,14 @@ class ServerWindow(QWidget):
     @pyqtSlot()
     def closeClientSlot(self):
         if self.isConnected == True:
-            ret = serverInstance.clear_server()
+            ret = self.serverInstance.close_server()
+            del self.serverInstance
+            self.serverInstance = Server()
             if ret == True:
-                QMessageBox(QMessageBox.Information, "信息", "服务端已关闭", QMessageBox.Ok)
+                info_message = QMessageBox(QMessageBox.Information, "信息", "服务端已关闭", QMessageBox.Ok)
+                info_message.exec_()
                 # self.close()
+                self.serverLogTab.logTestView.append("Server Closed!")
                 self.connectButton.setEnabled(True)
                 self.isConnected = False
 

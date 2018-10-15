@@ -82,7 +82,7 @@ class Server:
     def close_server(self):
         for _server in self.server_list:
             _server.close()
-        del self.server_list
+
         return True
 
 
