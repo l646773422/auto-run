@@ -54,7 +54,9 @@ class Client:
                 elif _data['type'] == 'task':
                     # parse task
 
-                    self.idle_core += 1
+                    self.idle_core -= 1
+                    print('parsing task')
+                    print(_data['task'])
                     pass
             except ConnectionResetError:
                 print('remote server error.')

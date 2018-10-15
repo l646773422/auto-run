@@ -1,6 +1,7 @@
 import os
 import socket
 import json
+import threading
 from collections import OrderedDict
 
 
@@ -98,4 +99,13 @@ def update_from_dict(_obj, kwargs):
         if hasattr(_obj, key):
             setattr(_obj, key, kwargs[key])
 
+
+def reg_timer(_func, *args, _interval=1, _cond_func=None, **kwargs):
+    if _cond_func is None or (callable(_cond_func) and _cond_func()):
+        # 函数执行结束后，再开启下一次计时
+        kwargs.update({'_interval': _interval, '_cond_func': _cond_func})
+        _func(*args)
+        _timer = threading.Timer(_interval, reg_timer, [_func, *args], kwargs)
+        _timer.start()
+        return
 
