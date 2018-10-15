@@ -77,6 +77,14 @@ class Service:
         self.server.listen(5)
         self.server_list.append(self.server)
         print('server start!')
+        return True
+
+    def close_server(self):
+        for _server in self.server_list:
+            _server.close()
+        del self.server_list
+        return True
+
 
     def listen(self):
         while True:
