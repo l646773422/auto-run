@@ -12,7 +12,7 @@ MAX_TASK_SIZE = 100
 MAX_BUFFER_SIZE = 1024
 
 
-class Service:
+class Server:
 
     class ClientInfo:
 
@@ -283,7 +283,7 @@ class Service:
 
 if __name__ == '__main__':
 
-    my_sever = Service()
+    my_sever = Server()
     my_sever.start_server()
     my_sever.update_task_dict()
     my_sever.assemble_tasks()
